@@ -11,26 +11,15 @@ public class BirthdayService
   private readonly DiscordSocketClient client;
   private readonly Dictionary<ulong, Birthday> birthdays = new();
   private readonly Dictionary<ulong, GuildConfig> guildConfigs = new();
-  private readonly PeriodicTimer birthdayTimer;
-  private Task? birthdayCheckTask;
-  private readonly CancellationTokenSource timerCts = new();
-  private DateTime lastCheckTime = DateTime.MinValue;
 
   private const string BirthdayFile = "birthdays.json";
   private const string ChannelFile = "channels.json";
-  private const int MinutesBetweenChecks = 30; // Prevent duplicate checks within 30 minutes
 
   public BirthdayService(DiscordSocketClient client)
   {
     this.client = client;
     this.LoadBirthdays();
     this.LoadGuildConfigs();
-
-    // Set up connection state handlers
-    // Removed event handlers for StartBirthdayChecks/StopBirthdayChecks and ConnectionStateChanged
-
-    // Create the timer but don't start it until connected
-    this.birthdayTimer = new PeriodicTimer(TimeSpan.FromHours(1));
   }
 
   /// <summary>
@@ -156,42 +145,6 @@ public class BirthdayService
   }
 
   /// <summary>
-  /// Starts the birthday check timer when connected.
-  /// </summary>
-  private Task StartBirthdayChecks()
-  {
-    Console.WriteLine("Connected to Discord. Starting birthday checks...");
-    this.birthdayCheckTask = this.RunBirthdayChecks();
-    return Task.CompletedTask;
-  }
-
-  /// <summary>
-  /// Stops the birthday check timer when disconnected.
-  /// </summary>
-  // Removed StopBirthdayChecks method
-
-  /// <summary>
-  /// Runs the periodic birthday check loop.
-  /// </summary>
-  private async Task RunBirthdayChecks()
-  {
-    try
-    {
-      while (await this.birthdayTimer.WaitForNextTickAsync(this.timerCts.Token))
-      {
-        if (this.client.ConnectionState == Discord.ConnectionState.Connected)
-        {
-          await this.CheckBirthdaysAsync();
-        }
-      }
-    }
-    catch (OperationCanceledException)
-    {
-      Console.WriteLine("Birthday checks stopped due to disconnect.");
-    }
-  }
-
-  /// <summary>
   /// Checks for birthdays and sends announcements.
   /// </summary>
   public async Task CheckBirthdaysAsync()
@@ -200,14 +153,6 @@ public class BirthdayService
     {
       var now = DateTime.Now;
       Console.WriteLine($"Birthday check triggered at {now:yyyy-MM-dd HH:mm:ss}");
-
-      // Prevent duplicate checks within cooldown period
-      var timeSinceLastCheck = now - this.lastCheckTime;
-      if (timeSinceLastCheck.TotalMinutes < MinutesBetweenChecks)
-      {
-        Console.WriteLine($"Skipping check - too soon since last check ({timeSinceLastCheck.TotalMinutes:F1} minutes ago)");
-        return;
-      }
 
       Console.WriteLine($"Current connection state: {this.client.ConnectionState}");
 
@@ -218,9 +163,6 @@ public class BirthdayService
       {
         await this.SendBirthdayAnnouncementAsync(birthday.UserId);
       }
-
-      // Update last check time only if we actually performed the check
-      this.lastCheckTime = now;
     }
     catch (Exception ex)
     {
@@ -381,11 +323,6 @@ public class BirthdayService
   /// </summary>
   public void Dispose()
   {
-    this.client.Connected -= this.StartBirthdayChecks;
-    // Removed reference to StopBirthdayChecks (no longer exists)
-    // Removed event handler unsubscriptions
-    this.timerCts.Cancel();
-    this.timerCts.Dispose();
-    this.birthdayTimer?.Dispose();
+    // No resources to dispose with Quartz implementation
   }
 }
