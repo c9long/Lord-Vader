@@ -37,13 +37,13 @@ public class Bot
         .AddSingleton<BirthdayCommands>()
         .AddQuartz(q =>
         {
-            var jobKey = new JobKey("BirthdayJob");
-            q.AddJob<BirthdayJob>(opts => opts.WithIdentity(jobKey));
-            q.AddTrigger(opts => opts
-                .ForJob(jobKey)
-                .WithIdentity("BirthdayTrigger")
-                .WithCronSchedule("0 0 0 * * ?", x => x.InTimeZone(TimeZoneInfo.FindSystemTimeZoneById("America/New_York")))
-            );
+          var jobKey = new JobKey("BirthdayJob");
+          q.AddJob<BirthdayJob>(opts => opts.WithIdentity(jobKey));
+          q.AddTrigger(opts => opts
+              .ForJob(jobKey)
+              .WithIdentity("BirthdayTrigger")
+              .WithCronSchedule("0 0 0 * * ?", x => x.InTimeZone(TimeZoneInfo.FindSystemTimeZoneById("America/New_York")))
+          );
         })
         .AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
