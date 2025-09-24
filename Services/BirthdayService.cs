@@ -200,7 +200,7 @@ public class BirthdayService
     {
       var now = DateTime.Now;
       Console.WriteLine($"Birthday check triggered at {now:yyyy-MM-dd HH:mm:ss}");
-      
+
       // Prevent duplicate checks within cooldown period
       var timeSinceLastCheck = now - this.lastCheckTime;
       if (timeSinceLastCheck.TotalMinutes < MinutesBetweenChecks)
@@ -210,7 +210,7 @@ public class BirthdayService
       }
 
       Console.WriteLine($"Current connection state: {this.client.ConnectionState}");
-      
+
       var todaysBirthdays = this.birthdays.Values.Where(b => b.IsTodayTheirBirthday()).ToList();
       Console.WriteLine($"Found {todaysBirthdays.Count} birthdays today");
 
@@ -218,7 +218,7 @@ public class BirthdayService
       {
         await this.SendBirthdayAnnouncementAsync(birthday.UserId);
       }
-      
+
       // Update last check time only if we actually performed the check
       this.lastCheckTime = now;
     }
@@ -382,7 +382,7 @@ public class BirthdayService
   public void Dispose()
   {
     this.client.Connected -= this.StartBirthdayChecks;
-  // Removed reference to StopBirthdayChecks (no longer exists)
+    // Removed reference to StopBirthdayChecks (no longer exists)
     // Removed event handler unsubscriptions
     this.timerCts.Cancel();
     this.timerCts.Dispose();

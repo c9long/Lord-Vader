@@ -5,6 +5,8 @@ using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using MyDiscordBot.Commands;
 using MyDiscordBot.Services;
+using Quartz;
+using System;
 
 namespace MyDiscordBot;
 
@@ -29,9 +31,21 @@ public class Bot
   private IServiceProvider ConfigureServices()
   {
     var services = new ServiceCollection()
+        .AddLogging()
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton<BirthdayService>()
-        .AddSingleton<BirthdayCommands>();
+        .AddSingleton<BirthdayCommands>()
+        .AddQuartz(q =>
+        {
+            var jobKey = new JobKey("BirthdayJob");
+            q.AddJob<BirthdayJob>(opts => opts.WithIdentity(jobKey));
+            q.AddTrigger(opts => opts
+                .ForJob(jobKey)
+                .WithIdentity("BirthdayTrigger")
+                .WithCronSchedule("0 0 0 * * ?", x => x.InTimeZone(TimeZoneInfo.FindSystemTimeZoneById("America/New_York")))
+            );
+        })
+        .AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
 
     return services.BuildServiceProvider();
   }
@@ -54,6 +68,11 @@ public class Bot
   {
     await this.client.LoginAsync(TokenType.Bot, this.token);
     await this.client.StartAsync();
+
+    // Start Quartz scheduler
+    var schedulerFactory = this.services.GetRequiredService<ISchedulerFactory>();
+    var scheduler = await schedulerFactory.GetScheduler();
+    await scheduler.Start();
 
     // Start console command handler
     _ = Task.Run(this.HandleConsoleCommandsAsync);
