@@ -115,7 +115,7 @@ public class BirthdayCommands
 
       if (this.birthdayService.TryParseBirthday(dateString, out DateTime birthday))
       {
-        if (this.birthdayService.SetBirthday(command.User.Id, birthday))
+        if (await this.birthdayService.SetBirthdayAsync(command.User.Id, birthday))
         {
           await command.RespondAsync($"✅ Your birthday has been set to {birthday:MMMM dd, yyyy}!");
         }
@@ -160,7 +160,7 @@ public class BirthdayCommands
       var channelOption = subCommand.Options.FirstOrDefault(x => x.Name == "channel");
       if (channelOption?.Value is SocketTextChannel channel)
       {
-        if (this.birthdayService.SetAnnouncementChannel(command.GuildId.Value, channel.Id))
+        if (await this.birthdayService.SetAnnouncementChannelAsync(command.GuildId.Value, channel.Id))
         {
           await command.RespondAsync($"✅ Birthday announcements will now be sent to {channel.Mention}!");
         }
@@ -202,10 +202,10 @@ public class BirthdayCommands
         return;
       }
 
-      var config = this.birthdayService.GetGuildConfig(command.GuildId.Value);
+      var config = await this.birthdayService.GetGuildConfigAsync(command.GuildId.Value);
       if (config?.IsAnnouncementEnabled == true)
       {
-        if (this.birthdayService.DisableAnnouncements(command.GuildId.Value))
+        if (await this.birthdayService.DisableAnnouncementsAsync(command.GuildId.Value))
         {
           await command.RespondAsync("✅ Birthday announcements have been disabled for this server.");
         }

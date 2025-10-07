@@ -2,8 +2,10 @@
 
 using Discord;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MyDiscordBot.Commands;
+using MyDiscordBot.Data;
 using MyDiscordBot.Services;
 using Quartz;
 using System;
@@ -33,6 +35,8 @@ public class Bot
     var services = new ServiceCollection()
         .AddLogging()
         .AddSingleton<DiscordSocketClient>()
+        .AddDbContext<ApplicationDbContext>(options =>
+          options.UseSqlite("Data Source=birthdays.db"))
         .AddSingleton<BirthdayService>()
         .AddSingleton<BirthdayCommands>()
         .AddSingleton<PingCommands>()

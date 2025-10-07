@@ -2,24 +2,21 @@
 
 using System.Text.Json;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
+using MyDiscordBot.Data;
 using MyDiscordBot.Models;
 
 namespace MyDiscordBot.Services;
 
-public class BirthdayService
+public class BirthdayService : IDisposable
 {
   private readonly DiscordSocketClient client;
-  private readonly Dictionary<ulong, Birthday> birthdays = new();
-  private readonly Dictionary<ulong, GuildConfig> guildConfigs = new();
+  private readonly ApplicationDbContext db;
 
-  private const string BirthdayFile = "birthdays.json";
-  private const string ChannelFile = "channels.json";
-
-  public BirthdayService(DiscordSocketClient client)
+  public BirthdayService(DiscordSocketClient client, ApplicationDbContext db)
   {
     this.client = client;
-    this.LoadBirthdays();
-    this.LoadGuildConfigs();
+    this.db = db;
   }
 
   /// <summary>
@@ -29,10 +26,12 @@ public class BirthdayService
   {
     var now = DateTime.Now;
     var today = now.Date;
-    var todaysBirthdays = this.birthdays.Values.Where(b =>
-      b.Date.Month == today.Month && b.Date.Day == today.Day).ToList();
+    var todaysBirthdays = await this.db.Birthdays
+      .Where(b => b.Date.Month == today.Month && b.Date.Day == today.Day)
+      .ToListAsync();
 
-    if (!this.guildConfigs.TryGetValue(guild.Id, out var config) || !config.IsAnnouncementEnabled || config.AnnouncementChannelId == null)
+    var config = await this.db.GuildConfigs.FindAsync(guild.Id);
+    if (config == null || !config.IsAnnouncementEnabled || config.AnnouncementChannelId == null)
     {
       Console.WriteLine($"No announcement channel configured for guild {guild.Name}");
       return;
@@ -56,12 +55,20 @@ public class BirthdayService
   /// Sets a user's birthday.
   /// </summary>
   /// <returns></returns>
-  public bool SetBirthday(ulong userId, DateTime birthday)
+  public async Task<bool> SetBirthdayAsync(ulong userId, DateTime birthday)
   {
     try
     {
-      this.birthdays[userId] = new Birthday(userId, birthday);
-      this.SaveBirthdays();
+      var existing = await this.db.Birthdays.FindAsync(userId);
+      if (existing != null)
+      {
+        existing.Date = birthday;
+      }
+      else
+      {
+        this.db.Birthdays.Add(new Birthday(userId, birthday));
+      }
+      await this.db.SaveChangesAsync();
       return true;
     }
     catch
@@ -74,21 +81,29 @@ public class BirthdayService
   /// Gets a user's birthday if it exists.
   /// </summary>
   /// <returns></returns>
-  public Birthday? GetBirthday(ulong userId)
+  public async Task<Birthday?> GetBirthdayAsync(ulong userId)
   {
-    return this.birthdays.TryGetValue(userId, out var birthday) ? birthday : null;
+    return await this.db.Birthdays.FindAsync(userId);
   }
 
   /// <summary>
   /// Sets the announcement channel for a guild.
   /// </summary>
   /// <returns></returns>
-  public bool SetAnnouncementChannel(ulong guildId, ulong channelId)
+  public async Task<bool> SetAnnouncementChannelAsync(ulong guildId, ulong channelId)
   {
     try
     {
-      this.guildConfigs[guildId] = new GuildConfig(guildId, channelId);
-      this.SaveGuildConfigs();
+      var existing = await this.db.GuildConfigs.FindAsync(guildId);
+      if (existing != null)
+      {
+        existing.AnnouncementChannelId = channelId;
+      }
+      else
+      {
+        this.db.GuildConfigs.Add(new GuildConfig(guildId, channelId));
+      }
+      await this.db.SaveChangesAsync();
       return true;
     }
     catch
@@ -101,16 +116,16 @@ public class BirthdayService
   /// Disables birthday announcements for a guild.
   /// </summary>
   /// <returns></returns>
-  public bool DisableAnnouncements(ulong guildId)
+  public async Task<bool> DisableAnnouncementsAsync(ulong guildId)
   {
     try
     {
-      if (this.guildConfigs.ContainsKey(guildId))
+      var config = await this.db.GuildConfigs.FindAsync(guildId);
+      if (config != null)
       {
-        this.guildConfigs.Remove(guildId);
-        this.SaveGuildConfigs();
+        this.db.GuildConfigs.Remove(config);
+        await this.db.SaveChangesAsync();
       }
-
       return true;
     }
     catch
@@ -123,9 +138,9 @@ public class BirthdayService
   /// Gets the guild configuration.
   /// </summary>
   /// <returns></returns>
-  public GuildConfig? GetGuildConfig(ulong guildId)
+  public async Task<GuildConfig?> GetGuildConfigAsync(ulong guildId)
   {
-    return this.guildConfigs.TryGetValue(guildId, out var config) ? config : null;
+    return await this.db.GuildConfigs.FindAsync(guildId);
   }
 
   /// <summary>
@@ -150,7 +165,9 @@ public class BirthdayService
 
       Console.WriteLine($"Current connection state: {this.client.ConnectionState}");
 
-      var todaysBirthdays = this.birthdays.Values.Where(b => b.IsTodayTheirBirthday()).ToList();
+      var todaysBirthdays = await this.db.Birthdays
+        .Where(b => b.Date.Month == now.Month && b.Date.Day == now.Day)
+        .ToListAsync();
       Console.WriteLine($"Found {todaysBirthdays.Count} birthdays today");
 
       foreach (var birthday in todaysBirthdays)
@@ -180,18 +197,22 @@ public class BirthdayService
       foreach (var guild in this.client.Guilds)
       {
         var guildUser = guild.GetUser(userId);
-        if (guildUser != null && this.guildConfigs.TryGetValue(guild.Id, out var config) && config.IsAnnouncementEnabled)
+        if (guildUser != null)
         {
-          var announcementChannel = guild.GetTextChannel(config.AnnouncementChannelId!.Value);
+          var config = await this.db.GuildConfigs.FindAsync(guild.Id);
+          if (config != null && config.IsAnnouncementEnabled)
+          {
+            var announcementChannel = guild.GetTextChannel(config.AnnouncementChannelId!.Value);
 
-          if (announcementChannel != null)
-          {
-            await announcementChannel.SendMessageAsync($"🎉 Happy Birthday <@{userId}>! 🎂");
-            Console.WriteLine($"Sent birthday message for user {userId} in guild {guild.Name}");
-          }
-          else
-          {
-            Console.WriteLine($"Configured announcement channel not found in guild {guild.Name}");
+            if (announcementChannel != null)
+            {
+              await announcementChannel.SendMessageAsync($"🎉 Happy Birthday <@{userId}>! 🎂");
+              Console.WriteLine($"Sent birthday message for user {userId} in guild {guild.Name}");
+            }
+            else
+            {
+              Console.WriteLine($"Configured announcement channel not found in guild {guild.Name}");
+            }
           }
         }
       }
@@ -203,120 +224,10 @@ public class BirthdayService
   }
 
   /// <summary>
-  /// Loads birthdays from file.
-  /// </summary>
-  private void LoadBirthdays()
-  {
-    try
-    {
-      if (File.Exists(BirthdayFile))
-      {
-        var json = File.ReadAllText(BirthdayFile);
-        var birthdayDict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-
-        if (birthdayDict != null)
-        {
-          foreach (var kvp in birthdayDict)
-          {
-            if (ulong.TryParse(kvp.Key, out var userId) && DateTime.TryParse(kvp.Value, out var date))
-            {
-              this.birthdays[userId] = new Birthday(userId, date);
-            }
-          }
-        }
-
-        Console.WriteLine($"Loaded {this.birthdays.Count} birthdays from file");
-      }
-    }
-    catch (Exception ex)
-    {
-      Console.WriteLine($"Error loading birthdays: {ex.Message}");
-    }
-  }
-
-  /// <summary>
-  /// Saves birthdays to file.
-  /// </summary>
-  private void SaveBirthdays()
-  {
-    try
-    {
-      var birthdayDict = this.birthdays.ToDictionary(
-          kvp => kvp.Key.ToString(),
-          kvp => kvp.Value.Date.ToString("yyyy-MM-dd"));
-
-      var json = JsonSerializer.Serialize(birthdayDict, new JsonSerializerOptions { WriteIndented = true });
-      File.WriteAllText(BirthdayFile, json);
-
-      Console.WriteLine("Birthdays saved to file");
-    }
-    catch (Exception ex)
-    {
-      Console.WriteLine($"Error saving birthdays: {ex.Message}");
-    }
-  }
-
-  /// <summary>
-  /// Loads guild configurations from file.
-  /// </summary>
-  private void LoadGuildConfigs()
-  {
-    try
-    {
-      if (File.Exists(ChannelFile))
-      {
-        var json = File.ReadAllText(ChannelFile);
-        var channelDict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-
-        if (channelDict != null)
-        {
-          foreach (var kvp in channelDict)
-          {
-            if (ulong.TryParse(kvp.Key, out var guildId) && ulong.TryParse(kvp.Value, out var channelId))
-            {
-              this.guildConfigs[guildId] = new GuildConfig(guildId, channelId);
-            }
-          }
-        }
-
-        Console.WriteLine($"Loaded {this.guildConfigs.Count} announcement channels from file");
-      }
-    }
-    catch (Exception ex)
-    {
-      Console.WriteLine($"Error loading channels: {ex.Message}");
-    }
-  }
-
-  /// <summary>
-  /// Saves guild configurations to file.
-  /// </summary>
-  private void SaveGuildConfigs()
-  {
-    try
-    {
-      var channelDict = this.guildConfigs
-          .Where(kvp => kvp.Value.IsAnnouncementEnabled)
-          .ToDictionary(
-              kvp => kvp.Key.ToString(),
-              kvp => kvp.Value.AnnouncementChannelId!.Value.ToString());
-
-      var json = JsonSerializer.Serialize(channelDict, new JsonSerializerOptions { WriteIndented = true });
-      File.WriteAllText(ChannelFile, json);
-
-      Console.WriteLine("Channels saved to file");
-    }
-    catch (Exception ex)
-    {
-      Console.WriteLine($"Error saving channels: {ex.Message}");
-    }
-  }
-
-  /// <summary>
   /// Dispose resources.
   /// </summary>
   public void Dispose()
   {
-    // No resources to dispose with Quartz implementation
+    this.db.Dispose();
   }
 }
