@@ -50,12 +50,6 @@ public class BirthdayService
       await announcementChannel.SendMessageAsync($"🎉 Happy Birthday <@{birthday.UserId}>! 🎂");
       Console.WriteLine($"Sent birthday message for user {birthday.UserId} in guild {guild.Name}");
     }
-
-    if (todaysBirthdays.Count == 0)
-    {
-      await announcementChannel.SendMessageAsync($"No birthdays today!");
-      Console.WriteLine($"No birthdays found for today in guild {guild.Name}");
-    }
   }
 
   /// <summary>

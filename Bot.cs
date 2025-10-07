@@ -35,6 +35,8 @@ public class Bot
         .AddSingleton<DiscordSocketClient>()
         .AddSingleton<BirthdayService>()
         .AddSingleton<BirthdayCommands>()
+        .AddSingleton<PingCommands>()
+        .AddSingleton<PingService>()
         .AddQuartz(q =>
         {
           var jobKey = new JobKey("BirthdayJob");
@@ -110,13 +112,17 @@ public class Bot
       var birthdayCommands = this.services.GetRequiredService<BirthdayCommands>();
       var birthdayCommand = birthdayCommands.GetBirthdayCommand();
 
+      var pingCommands = this.services.GetRequiredService<PingCommands>();
+      var pingCommand = pingCommands.GetPingCommand();
+
       // Register globally (takes up to 1 hour to appear)
       await this.client.CreateGlobalApplicationCommandAsync(birthdayCommand);
-      Console.WriteLine("Slash command registered successfully!");
+      await this.client.CreateGlobalApplicationCommandAsync(pingCommand);
+      Console.WriteLine("Slash commands registered successfully!");
     }
     catch (Exception ex)
     {
-      Console.WriteLine($"Error registering slash command: {ex.Message}");
+      Console.WriteLine($"Error registering slash commands: {ex.Message}");
     }
   }
 
@@ -127,8 +133,16 @@ public class Bot
   {
     try
     {
-      var birthdayCommands = this.services.GetRequiredService<BirthdayCommands>();
-      await birthdayCommands.HandleBirthdayCommandAsync(command);
+      if (command.Data.Name == "birthday")
+      {
+        var birthdayCommands = this.services.GetRequiredService<BirthdayCommands>();
+        await birthdayCommands.HandleBirthdayCommandAsync(command);
+      }
+      else if (command.Data.Name == "ping")
+      {
+        var pingCommands = this.services.GetRequiredService<PingCommands>();
+        await pingCommands.HandlePingCommandAsync(command);
+      }
     }
     catch (Exception ex)
     {
